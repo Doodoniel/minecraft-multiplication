@@ -1,0 +1,712 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Шахта умножения</title>
+<style>
+/* ───────────── токены ───────────── */
+:root{
+  --void:#12121b;
+  --void-2:#1b1b27;
+  --stone-d:#2b2b33;
+  --stone:#3d3d47;
+  --stone-l:#55555f;
+  --grass:#6faa3c;
+  --dirt:#7a5433;
+  --diamond:#52dfd6;
+  --gold:#f2b736;
+  --redstone:#d84a4a;
+  --emerald:#3fbf63;
+  --ink:#e8e6df;
+  --ink-dim:#9c9aa4;
+  --shadow:rgba(0,0,0,.6);
+  --font:ui-monospace,"Cascadia Mono","Consolas","Courier New",monospace;
+  --px:4px;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  background:var(--void);
+  color:var(--ink);
+  font-family:var(--font);
+  font-size:16px;
+  line-height:1.45;
+  -webkit-font-smoothing:none;
+  overflow:hidden;
+  touch-action:manipulation;
+}
+button{font:inherit;color:inherit;cursor:pointer;border:0;background:none}
+:focus-visible{outline:3px solid var(--diamond);outline-offset:3px}
+
+/* ───────────── мир ───────────── */
+#world{
+  position:fixed;inset:0;
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(82,223,214,.07) 0%, transparent 55%),
+    linear-gradient(180deg,#1b1b27 0%,#12121b 45%,#0c0c13 100%);
+  /* ▼ СЮДА можно подставить сгенерированный фон: url("bg-cave.png") */
+  background-size:cover;
+  background-position:center;
+  image-rendering:pixelated;
+}
+#world::after{ /* виньетка пещеры */
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(75% 60% at 50% 45%,transparent 40%,rgba(0,0,0,.72) 100%);
+}
+#fx{position:fixed;inset:0;pointer-events:none;z-index:40}
+
+.torch{position:fixed;top:22vh;width:14px;height:52px;background:var(--dirt);z-index:2;
+  box-shadow:inset -4px 0 0 rgba(0,0,0,.35);image-rendering:pixelated}
+.torch.left{left:26px}.torch.right{right:26px}
+.torch i{position:absolute;top:-14px;left:-3px;width:20px;height:18px;background:var(--gold);
+  box-shadow:0 0 26px 12px rgba(242,183,54,.5),0 0 70px 30px rgba(242,183,54,.16);
+  animation:flick 1.6s steps(3,end) infinite}
+@keyframes flick{0%,100%{opacity:1;transform:translateY(0)}33%{opacity:.78;transform:translateY(1px)}66%{opacity:.92}}
+@media (max-width:720px){.torch{display:none}}
+
+/* ───────────── общий каркас ───────────── */
+.screen{position:fixed;inset:0;z-index:10;display:none;flex-direction:column;
+  align-items:center;justify-content:center;gap:22px;padding:20px;overflow-y:auto}
+.screen.on{display:flex}
+
+.plate{background:rgba(18,18,27,.82);border:var(--px) solid var(--stone);
+  box-shadow:0 0 0 var(--px) var(--stone-d), 8px 8px 0 rgba(0,0,0,.45)}
+
+h1,h2,h3,.label{text-transform:uppercase;letter-spacing:.08em;text-shadow:2px 2px 0 var(--shadow)}
+h1{font-size:clamp(24px,5.5vw,40px);line-height:1.15;text-wrap:balance}
+h2{font-size:clamp(18px,3.6vw,26px)}
+.label{font-size:12px;color:var(--ink-dim);letter-spacing:.16em}
+.sub{color:var(--ink-dim);font-size:14px;text-wrap:balance;text-align:center}
+
+/* блочная кнопка в стиле майнкрафта */
+.btn{
+  position:relative;padding:14px 22px;background:var(--stone);
+  border-top:var(--px) solid var(--stone-l);border-left:var(--px) solid var(--stone-l);
+  border-bottom:var(--px) solid var(--stone-d);border-right:var(--px) solid var(--stone-d);
+  text-transform:uppercase;letter-spacing:.06em;text-shadow:2px 2px 0 var(--shadow);
+  transition:background .08s steps(2);
+}
+.btn:hover{background:var(--stone-l)}
+.btn:active{transform:translate(2px,2px)}
+.btn.primary{background:var(--grass)}
+.btn.primary:hover{background:#83c249}
+.btn.ghost{background:transparent;border-color:var(--stone);color:var(--ink-dim)}
+
+/* ───────────── карта уровней ───────────── */
+#map{justify-content:flex-start;padding-top:26px}
+.map-head{text-align:center;display:flex;flex-direction:column;gap:6px;align-items:center}
+.levels{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;
+  width:min(760px,100%)}
+.lvl{padding:12px;display:flex;gap:12px;align-items:center;text-align:left;
+  background:rgba(43,43,51,.75);
+  border-top:var(--px) solid var(--stone-l);border-left:var(--px) solid var(--stone-l);
+  border-bottom:var(--px) solid var(--stone-d);border-right:var(--px) solid var(--stone-d)}
+.lvl:hover:not(.locked){background:rgba(85,85,95,.8)}
+.lvl.locked{opacity:.4;cursor:not-allowed}
+.lvl .ico{width:44px;height:44px;flex:0 0 44px;image-rendering:pixelated;
+  box-shadow:inset 0 0 0 2px rgba(0,0,0,.35)}
+.lvl .meta{display:flex;flex-direction:column;gap:2px;min-width:0}
+.lvl .nm{font-size:13px;text-transform:uppercase;letter-spacing:.04em;text-shadow:2px 2px 0 var(--shadow)}
+.lvl .tb{font-size:11px;color:var(--ink-dim)}
+.stars{font-size:12px;color:var(--gold);letter-spacing:2px}
+.stars .off{color:var(--stone-l)}
+
+/* ───────────── HUD ───────────── */
+#game{justify-content:space-between;padding:14px 14px 0}
+.hud{width:min(640px,100%);display:flex;flex-direction:column;gap:8px}
+.hud-row{display:flex;align-items:center;justify-content:space-between;gap:10px}
+.hearts{display:flex;gap:6px}
+.heart{width:22px;height:22px;background:var(--redstone);
+  clip-path:polygon(20% 0,40% 0,50% 15%,60% 0,80% 0,100% 25%,100% 45%,50% 100%,0 45%,0 25%);
+  filter:drop-shadow(2px 2px 0 var(--shadow))}
+.heart.lost{background:var(--stone);animation:pop .3s steps(3)}
+@keyframes pop{0%{transform:scale(1.5)}100%{transform:scale(1)}}
+.bar{height:20px;background:var(--stone-d);border:var(--px) solid var(--stone);position:relative;overflow:hidden}
+.bar i{display:block;height:100%;width:0;background:var(--grass);transition:width .25s steps(6);
+  background-image:linear-gradient(90deg,rgba(255,255,255,.16) 0 4px,transparent 4px 8px)}
+.bar b{position:absolute;inset:0;display:grid;place-items:center;font-size:11px;
+  letter-spacing:.1em;text-shadow:2px 2px 0 var(--shadow);font-weight:400}
+
+/* ───────────── блок с примером ───────────── */
+.arena{display:flex;flex-direction:column;align-items:center;gap:18px;width:min(640px,100%);flex:1;justify-content:center}
+.block{position:relative;width:min(230px,62vw);aspect-ratio:1;image-rendering:pixelated;
+  box-shadow:inset 0 0 0 4px rgba(0,0,0,.28), 10px 10px 0 rgba(0,0,0,.4);
+  display:grid;place-items:center}
+.block .crack{position:absolute;inset:0;image-rendering:pixelated;background-size:100% 100%}
+.block .q{position:relative;padding:10px 16px;background:rgba(10,10,16,.78);
+  font-size:clamp(30px,7.5vw,48px);letter-spacing:.06em;text-shadow:3px 3px 0 var(--shadow);
+  font-variant-numeric:tabular-nums}
+.block.hit{animation:hit .12s steps(2)}
+@keyframes hit{50%{transform:translate(-5px,4px) rotate(-1deg)}}
+.block.gone{animation:gone .28s steps(4) forwards}
+@keyframes gone{to{transform:scale(.2) rotate(-14deg);opacity:0}}
+.shake{animation:shake .32s steps(4)}
+@keyframes shake{25%{transform:translateX(-9px)}50%{transform:translateX(8px)}75%{transform:translateX(-5px)}}
+
+.answers{display:grid;grid-template-columns:1fr 1fr;gap:10px;width:min(420px,100%)}
+.ans{padding:16px 8px;font-size:clamp(20px,5vw,28px);font-variant-numeric:tabular-nums;
+  background:var(--stone);
+  border-top:var(--px) solid var(--stone-l);border-left:var(--px) solid var(--stone-l);
+  border-bottom:var(--px) solid var(--stone-d);border-right:var(--px) solid var(--stone-d);
+  text-shadow:2px 2px 0 var(--shadow)}
+.ans:hover:not(:disabled){background:var(--stone-l)}
+.ans:active:not(:disabled){transform:translate(2px,2px)}
+.ans.ok{background:var(--grass)}
+.ans.no{background:var(--redstone)}
+.ans:disabled{cursor:default}
+.ans small{display:block;font-size:10px;color:var(--ink-dim);letter-spacing:.1em}
+
+.streak{height:22px;display:flex;align-items:center;gap:8px;font-size:12px;letter-spacing:.1em;color:var(--gold)}
+.streak.charged{animation:glow 1s steps(2) infinite}
+@keyframes glow{50%{opacity:.55}}
+
+/* ───────────── хотбар ───────────── */
+.hotbar{display:flex;gap:4px;padding:5px;background:rgba(18,18,27,.85);
+  border:var(--px) solid var(--stone-l);margin:0 auto 12px}
+.slot{width:46px;height:46px;background:rgba(139,139,139,.16);position:relative;image-rendering:pixelated;
+  box-shadow:inset 2px 2px 0 rgba(0,0,0,.35),inset -2px -2px 0 rgba(255,255,255,.1)}
+.slot span{position:absolute;right:2px;bottom:0;font-size:12px;text-shadow:2px 2px 0 #000;
+  font-variant-numeric:tabular-nums}
+@media (max-width:520px){.slot{width:36px;height:36px}}
+
+/* ───────────── оверлеи ───────────── */
+.card{padding:28px 26px;max-width:460px;width:100%;display:flex;flex-direction:column;
+  align-items:center;gap:16px;text-align:center}
+.loot{display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+.loot .slot{width:52px;height:52px}
+.big-stars{font-size:34px;color:var(--gold);letter-spacing:8px;text-shadow:3px 3px 0 var(--shadow)}
+.big-stars .off{color:var(--stone)}
+.row{display:flex;gap:10px;flex-wrap:wrap;justify-content:center}
+
+/* шпаргалка */
+.cheat{display:grid;grid-template-columns:repeat(2,1fr);gap:4px 14px;width:100%;
+  font-size:15px;font-variant-numeric:tabular-nums}
+.cheat div{padding:3px 8px;background:rgba(85,85,95,.25);letter-spacing:.04em}
+.cheat div b{color:var(--diamond);font-weight:400}
+
+.toast{position:fixed;left:50%;top:14%;transform:translateX(-50%);z-index:50;
+  padding:10px 18px;background:rgba(10,10,16,.9);border:var(--px) solid var(--gold);
+  color:var(--gold);font-size:13px;letter-spacing:.08em;text-transform:uppercase;
+  text-shadow:2px 2px 0 var(--shadow);opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+
+.corner{position:fixed;top:12px;right:12px;z-index:30;display:flex;gap:8px}
+.corner .btn{padding:8px 12px;font-size:12px}
+@media (max-width:600px){
+  .corner .btn{padding:6px 10px;font-size:11px}
+  #game{padding-top:56px}
+  #map{padding-top:60px}
+}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms!important;transition-duration:.01ms!important}
+}
+</style>
+</head>
+<body>
+<div id="world"></div>
+<div class="torch left"><i></i></div>
+<div class="torch right"><i></i></div>
+<canvas id="fx"></canvas>
+
+<div class="corner">
+  <button class="btn ghost" id="sound" title="Звук">🔊</button>
+  <button class="btn ghost" id="toMap" title="К карте" style="display:none">Карта</button>
+</div>
+
+<!-- КАРТА УРОВНЕЙ -->
+<section class="screen on" id="map">
+  <div class="map-head">
+    <p class="label">Шахта умножения</p>
+    <h1>Копай глубже,<br>считай быстрее</h1>
+    <p class="sub" id="mapSub">10 уровней · 3 жизни на уровень</p>
+  </div>
+  <div class="levels" id="levels"></div>
+  <div class="hotbar" id="mapBar"></div>
+  <button class="btn ghost" id="reset" style="font-size:11px;padding:8px 14px">Начать шахту заново</button>
+</section>
+
+<!-- ИГРА -->
+<section class="screen" id="game">
+  <div class="hud plate" style="padding:10px 12px">
+    <div class="hud-row">
+      <span class="label" id="lvlName">Уровень</span>
+      <div class="hearts" id="hearts"></div>
+    </div>
+    <div class="bar"><i id="barFill"></i><b id="barText">0 / 10</b></div>
+  </div>
+
+  <div class="arena">
+    <div class="streak" id="streak"></div>
+    <div class="block" id="block"><div class="crack" id="crack"></div><div class="q" id="q">2 × 2</div></div>
+    <div class="answers" id="answers"></div>
+    <button class="btn ghost" id="hint" style="font-size:11px;padding:8px 14px">Подсказка (3)</button>
+  </div>
+
+  <div class="hotbar" id="gameBar"></div>
+</section>
+
+<!-- ШПАРГАЛКА ПЕРЕД УРОВНЕМ -->
+<section class="screen" id="brief">
+  <div class="card plate">
+    <p class="label" id="briefLvl">Уровень 1</p>
+    <h2 id="briefName">Дубовая роща</h2>
+    <p class="sub" id="briefHow">Посмотри табличку и запомни. Потом ломай блоки!</p>
+    <div class="cheat" id="cheat"></div>
+    <button class="btn primary" id="startLvl">В шахту!</button>
+  </div>
+</section>
+
+<!-- ПОБЕДА НА УРОВНЕ -->
+<section class="screen" id="win">
+  <div class="card plate">
+    <p class="label">Уровень пройден</p>
+    <h2 id="winName">Дубовая роща</h2>
+    <div class="big-stars" id="winStars">★★★</div>
+    <p class="sub" id="winMsg">Сундук открыт!</p>
+    <div class="loot" id="winLoot"></div>
+    <div class="row">
+      <button class="btn primary" id="nextLvl">Дальше ▶</button>
+      <button class="btn" id="winMap">Карта</button>
+    </div>
+  </div>
+</section>
+
+<!-- ПОРАЖЕНИЕ -->
+<section class="screen" id="lose">
+  <div class="card plate">
+    <p class="label" style="color:var(--redstone)">Крипер взорвался</p>
+    <h2>Жизни кончились</h2>
+    <p class="sub" id="loseMsg">Ничего страшного! Кирка целая — попробуем ещё раз.</p>
+    <div class="cheat" id="loseCheat"></div>
+    <div class="row">
+      <button class="btn primary" id="retry">Ещё раз</button>
+      <button class="btn" id="loseMap">Карта</button>
+    </div>
+  </div>
+</section>
+
+<!-- ФИНАЛ -->
+<section class="screen" id="final">
+  <div class="card plate">
+    <p class="label" style="color:var(--diamond)">Дно шахты</p>
+    <h1>Вся таблица<br>добыта!</h1>
+    <div class="big-stars" id="finalStars">★</div>
+    <p class="sub" id="finalMsg"></p>
+    <div class="loot" id="finalLoot"></div>
+    <button class="btn primary" id="finalMap">К карте</button>
+  </div>
+</section>
+
+<div class="toast" id="toast"></div>
+
+<script>
+"use strict";
+/* ═══════════ 1. ПИКСЕЛЬНЫЕ ТЕКСТУРЫ 16×16 ═══════════ */
+const R = (s => () => (s = s * 16807 % 2147483647) / 2147483647)(20260816);
+
+function tex(draw){
+  const c = document.createElement("canvas");
+  c.width = c.height = 16;
+  const x = c.getContext("2d");
+  draw(x);
+  return c.toDataURL();
+}
+const noise = (x, pal, dark = .0) => {
+  for (let i = 0; i < 16; i++) for (let j = 0; j < 16; j++){
+    x.fillStyle = pal[(R() * pal.length) | 0];
+    x.fillRect(i, j, 1, 1);
+    if (R() < dark){ x.fillStyle = "rgba(0,0,0,.18)"; x.fillRect(i, j, 1, 1); }
+  }
+};
+const SPOTS = [[2,2],[3,2],[2,3],[3,3],[9,3],[10,3],[10,4],[5,8],[6,8],[5,9],[12,10],[11,11],[12,11],[3,12],[4,12],[4,11]];
+const ore = (base, col, hi) => tex(x => {
+  noise(x, base, .1);
+  SPOTS.forEach(([i, j]) => { x.fillStyle = col; x.fillRect(i, j, 1, 1); });
+  SPOTS.filter((_, k) => k % 3 === 0).forEach(([i, j]) => { x.fillStyle = hi; x.fillRect(i, j, 1, 1); });
+});
+
+const STONE_P = ["#7d7d84","#727279","#87878e","#6a6a71"];
+const NETHER_P = ["#7b3a36","#6b322f","#8a423d","#5e2b29"];
+
+const TEX = {
+  oak: tex(x => {
+    noise(x, ["#a4783f","#96703b","#b08348","#8d6836"]);
+    x.fillStyle = "rgba(0,0,0,.3)";
+    [0,5,10,15].forEach(y => x.fillRect(0, y, 16, 1));
+    x.fillRect(7, 0, 1, 5); x.fillRect(4, 5, 1, 5); x.fillRect(11, 10, 1, 5);
+  }),
+  sand: tex(x => noise(x, ["#dcd3a0","#d3c994","#e5dcaf","#cdc28c"])),
+  stone: tex(x => noise(x, STONE_P, .12)),
+  coal: ore(STONE_P, "#2c2c2c", "#141414"),
+  iron: ore(STONE_P, "#c8a186", "#e0c0a6"),
+  gold: ore(STONE_P, "#f2c033", "#fbe57a"),
+  nether: tex(x => noise(x, NETHER_P, .18)),
+  diamond: ore(STONE_P, "#4fded4", "#a6f5ef"),
+  emerald: ore(STONE_P, "#2fbd57", "#7ef29a"),
+  obsidian: tex(x => noise(x, ["#221a33","#1a1428","#2b2140","#150f21"])),
+  grass: tex(x => noise(x, ["#7fb03f","#6da236","#8bbd4b","#639632"])),
+  chest: tex(x => {
+    noise(x, ["#a4783f","#96703b","#b08348"]);
+    x.fillStyle = "#3d2b16"; x.fillRect(0, 4, 16, 2);
+    x.fillStyle = "#d9b24a"; x.fillRect(7, 5, 2, 4);
+  })
+};
+
+/* ═══════════ 2. УРОВНИ ═══════════ */
+const LEVELS = [
+  { name:"Дубовая роща",   tables:[2],            tex:"oak",      loot:"Доски",     ore:"grass"    },
+  { name:"Песчаный берег", tables:[3],            tex:"sand",     loot:"Песок",     ore:"iron"     },
+  { name:"Каменный грот",  tables:[4],            tex:"stone",    loot:"Камень",    ore:"coal"     },
+  { name:"Угольный штрек", tables:[5],            tex:"coal",     loot:"Уголь",     ore:"iron"     },
+  { name:"Железная жила",  tables:[2,3,4,5],      tex:"iron",     loot:"Железо",    ore:"gold"     },
+  { name:"Золотая пещера", tables:[6],            tex:"gold",     loot:"Золото",    ore:"diamond"  },
+  { name:"Лавовые пласты", tables:[7],            tex:"nether",   loot:"Незер",     ore:"gold"     },
+  { name:"Алмазный слой",  tables:[8],            tex:"diamond",  loot:"Алмаз",     ore:"diamond"  },
+  { name:"Тайник изумруда",tables:[9],            tex:"emerald",  loot:"Изумруд",   ore:"emerald"  },
+  { name:"Логово крипера", tables:[2,3,4,5,6,7,8,9], tex:"obsidian", loot:"Обсидиан", ore:"diamond" }
+];
+const NAMES = { oak:"Доски", sand:"Песок", stone:"Камень", coal:"Уголь", iron:"Железо",
+  gold:"Золото", nether:"Незер", diamond:"Алмаз", emerald:"Изумруд", obsidian:"Обсидиан", grass:"Трава" };
+
+/* ═══════════ 3. СОХРАНЕНИЕ ═══════════ */
+const KEY = "shahta-umnozheniya-v1";
+let save = { stars:{}, inv:{}, sound:true };
+try { Object.assign(save, JSON.parse(localStorage.getItem(KEY) || "{}")); } catch(e){}
+const store = () => { try { localStorage.setItem(KEY, JSON.stringify(save)); } catch(e){} };
+const unlocked = i => i === 0 || save.stars[i - 1] > 0;
+
+/* ═══════════ 4. ЗВУК ═══════════ */
+let AC = null;
+function beep(freq, dur = .08, type = "square", vol = .07){
+  if (!save.sound) return;
+  try {
+    AC = AC || new (window.AudioContext || window.webkitAudioContext)();
+    const o = AC.createOscillator(), g = AC.createGain();
+    o.type = type; o.frequency.value = freq;
+    g.gain.setValueAtTime(vol, AC.currentTime);
+    g.gain.exponentialRampToValueAtTime(.0001, AC.currentTime + dur);
+    o.connect(g); g.connect(AC.destination);
+    o.start(); o.stop(AC.currentTime + dur);
+  } catch(e){}
+}
+const SFX = {
+  hit:   () => beep(150 + R() * 60, .05, "square", .05),
+  break_:() => { beep(320, .07); setTimeout(() => beep(480, .1), 50); },
+  hurt:  () => { beep(180, .18, "sawtooth", .09); setTimeout(() => beep(120, .22, "sawtooth", .08), 90); },
+  win:   () => [523, 659, 784, 1047].forEach((f, i) => setTimeout(() => beep(f, .16, "square", .07), i * 130)),
+  lose:  () => [392, 330, 262, 196].forEach((f, i) => setTimeout(() => beep(f, .2, "sawtooth", .07), i * 150)),
+  charge:() => [784, 988, 1319].forEach((f, i) => setTimeout(() => beep(f, .1, "triangle", .06), i * 70))
+};
+
+/* ═══════════ 5. ЧАСТИЦЫ ═══════════ */
+const fx = document.getElementById("fx"), fxc = fx.getContext("2d");
+let parts = [];
+function sizeFx(){
+  const d = Math.min(devicePixelRatio || 1, 2);
+  fx.width = innerWidth * d; fx.height = innerHeight * d;
+  fxc.setTransform(d, 0, 0, d, 0, 0);
+}
+addEventListener("resize", sizeFx); sizeFx();
+
+function burst(el, colors, n = 26){
+  const r = el.getBoundingClientRect();
+  for (let i = 0; i < n; i++) parts.push({
+    x: r.left + R() * r.width, y: r.top + R() * r.height,
+    vx: (R() - .5) * 7, vy: -R() * 8 - 1,
+    s: 4 + R() * 6, life: 1, c: colors[(R() * colors.length) | 0]
+  });
+}
+const PAL = {
+  oak:["#a4783f","#96703b","#3d2b16"], sand:["#dcd3a0","#e5dcaf","#b8ae7c"],
+  stone:["#7d7d84","#6a6a71","#4d4d54"], coal:["#2c2c2c","#7d7d84","#141414"],
+  iron:["#c8a186","#e0c0a6","#7d7d84"], gold:["#f2c033","#fbe57a","#7d7d84"],
+  nether:["#7b3a36","#8a423d","#5e2b29"], diamond:["#4fded4","#a6f5ef","#7d7d84"],
+  emerald:["#2fbd57","#7ef29a","#7d7d84"], obsidian:["#221a33","#2b2140","#4a3a6b"],
+  grass:["#7fb03f","#6da236","#7a5433"], red:["#d84a4a","#ff7b7b"]
+};
+(function loop(){
+  fxc.clearRect(0, 0, innerWidth, innerHeight);
+  parts = parts.filter(p => p.life > 0);
+  for (const p of parts){
+    p.vy += .45; p.x += p.vx; p.y += p.vy; p.life -= .016;
+    fxc.globalAlpha = Math.max(p.life, 0);
+    fxc.fillStyle = p.c;
+    fxc.fillRect(p.x | 0, p.y | 0, p.s, p.s);
+  }
+  fxc.globalAlpha = 1;
+  requestAnimationFrame(loop);
+})();
+
+/* ═══════════ 6. ТРЕЩИНЫ ═══════════ */
+const CRACKS = [null, ...[10, 22, 40].map(n => tex(x => {
+  x.clearRect(0, 0, 16, 16);
+  x.fillStyle = "rgba(0,0,0,.5)";
+  let cx = 8, cy = 0;
+  for (let i = 0; i < n; i++){
+    x.fillRect(cx, cy, 1, 1);
+    cx = Math.max(0, Math.min(15, cx + ((R() * 3) | 0) - 1));
+    cy = (cy + (R() < .7 ? 1 : 0)) % 16;
+    if (i % 9 === 0){ cx = (R() * 16) | 0; cy = (R() * 16) | 0; }
+  }
+}))];
+
+/* ═══════════ 7. ЭЛЕМЕНТЫ ═══════════ */
+const $ = id => document.getElementById(id);
+const screens = ["map","game","brief","win","lose","final"];
+const show = id => screens.forEach(s => $(s).classList.toggle("on", s === id));
+const toast = (t) => { const el = $("toast"); el.textContent = t; el.classList.add("on");
+  clearTimeout(el._t); el._t = setTimeout(() => el.classList.remove("on"), 1400); };
+
+/* ═══════════ 8. СОСТОЯНИЕ ═══════════ */
+let S = null;
+
+function makeQuestions(lv){
+  const facts = [];
+  for (const t of lv.tables) for (let m = 2; m <= 10; m++) facts.push([t, m]);
+  facts.sort(() => R() - .5);
+  const total = lv.tables.length === 1 ? 9 : 12;
+  return facts.slice(0, total).map(([a, b]) => R() < .5 ? [a, b] : [b, a]);
+}
+
+function options(a, b){
+  const right = a * b, set = new Set([right]);
+  const cand = [right + a, right - a, right + b, right - b, right + 1, right - 1, right + 10, a + b];
+  cand.sort(() => R() - .5);
+  for (const c of cand){ if (set.size >= 4) break; if (c > 0 && c <= 110) set.add(c); }
+  let n = 2;
+  while (set.size < 4){ set.add(right + n); n++; }
+  return [...set].slice(0, 4).sort(() => R() - .5);
+}
+
+function startLevel(i){
+  const lv = LEVELS[i];
+  S = { i, lv, queue: makeQuestions(lv), done: 0, total: 0, hearts: 3, streak: 0,
+        charged: false, hints: 3, loot: {}, busy: false };
+  S.total = S.queue.length;
+  // шпаргалка
+  $("briefLvl").textContent = "Уровень " + (i + 1) + " · 3 жизни";
+  $("briefName").textContent = lv.name;
+  $("briefHow").textContent = lv.tables.length === 1
+    ? "Табличка на " + lv.tables[0] + ". Прочитай вслух — и в шахту."
+    : "Здесь смешаны все таблички: " + lv.tables.join(", ") + ". Ты справишься!";
+  $("cheat").innerHTML = cheatHTML(lv.tables.length === 1 ? lv.tables[0] : null);
+  show("brief");
+}
+
+function cheatHTML(t){
+  if (t == null){
+    return [2,3,4,5,6,7,8,9].map(x => `<div>${x} × ${x} = <b>${x*x}</b></div>`).join("");
+  }
+  let h = "";
+  for (let m = 2; m <= 10; m++) h += `<div>${t} × ${m} = <b>${t*m}</b></div>`;
+  return h;
+}
+
+function renderHUD(){
+  $("lvlName").textContent = (S.i + 1) + ". " + S.lv.name;
+  $("hearts").innerHTML = [0,1,2].map(k => `<div class="heart${k < S.hearts ? "" : " lost"}"></div>`).join("");
+  const pct = Math.round(S.done / S.total * 100);
+  $("barFill").style.width = pct + "%";
+  $("barText").textContent = S.done + " / " + S.total;
+  $("hint").textContent = "Подсказка (" + S.hints + ")";
+  $("hint").disabled = S.hints === 0;
+  $("streak").innerHTML = S.charged
+    ? "⛏ Зачарованная кирка! Двойная добыча"
+    : (S.streak > 0 ? "Серия: " + "▪".repeat(S.streak) : "");
+  $("streak").classList.toggle("charged", S.charged);
+  renderBar($("gameBar"));
+}
+
+function nextQuestion(){
+  if (S.queue.length === 0) return finishLevel();
+  const [a, b] = S.queue[0];
+  $("block").style.backgroundImage = `url(${TEX[S.lv.tex]})`;
+  $("block").className = "block";
+  $("crack").style.backgroundImage = "none";
+  $("q").textContent = a + " × " + b;
+  const opts = options(a, b);
+  $("answers").innerHTML = opts.map((v, k) =>
+    `<button class="ans" data-v="${v}">${v}<small>${k + 1}</small></button>`).join("");
+  S.busy = false;
+  renderHUD();
+}
+
+function answer(btn){
+  if (S.busy) return;
+  S.busy = true;
+  const [a, b] = S.queue[0], right = a * b, val = +btn.dataset.v;
+  const btns = [...document.querySelectorAll(".ans")];
+  btns.forEach(x => x.disabled = true);
+
+  if (val === right){
+    btn.classList.add("ok");
+    mine(() => {
+      const gain = S.charged ? 2 : 1;
+      add(S.lv.tex, gain);
+      S.streak++;
+      if (S.streak > 0 && S.streak % 3 === 0){
+        add(S.lv.ore, 1); S.charged = true; SFX.charge();
+        toast("+ " + NAMES[S.lv.ore] + "! Кирка заряжена");
+      } else if (S.charged){ S.charged = false; }
+      S.done++;
+      S.queue.shift();
+      nextQuestion();
+    });
+  } else {
+    btn.classList.add("no");
+    btns.find(x => +x.dataset.v === right).classList.add("ok");
+    $("block").classList.add("shake");
+    S.hearts--; S.streak = 0; S.charged = false;
+    SFX.hurt();
+    burst($("block"), PAL.red, 16);
+    renderHUD();
+    // ошибку повторим позже
+    const q = S.queue.shift();
+    S.queue.push(q);
+    setTimeout(() => {
+      if (S.hearts <= 0) return failLevel();
+      nextQuestion();
+    }, 1250);
+  }
+}
+
+function mine(done){
+  const block = $("block"), crack = $("crack");
+  let f = 1;
+  const step = () => {
+    block.classList.remove("hit"); void block.offsetWidth; block.classList.add("hit");
+    crack.style.backgroundImage = `url(${CRACKS[f]})`;
+    SFX.hit();
+    if (f++ < 3) setTimeout(step, 95);
+    else setTimeout(() => {
+      SFX.break_();
+      burst(block, PAL[S.lv.tex] || PAL.stone, 30);
+      block.classList.add("gone");
+      setTimeout(done, 240);
+    }, 95);
+  };
+  step();
+}
+
+const add = (k, n) => { S.loot[k] = (S.loot[k] || 0) + n; save.inv[k] = (save.inv[k] || 0) + n; };
+
+function finishLevel(){
+  SFX.win();
+  const stars = S.hearts;
+  save.stars[S.i] = Math.max(save.stars[S.i] || 0, stars);
+  store();
+  $("winName").textContent = S.lv.name;
+  $("winStars").innerHTML = [0,1,2].map(k =>
+    k < stars ? "★" : '<span class="off">★</span>').join("");
+  $("winMsg").textContent = stars === 3
+    ? "Ни одной ошибки! Идеальная добыча."
+    : stars === 2 ? "Отличная работа, шахтёрка!" : "Прошла! В следующий раз будет легче.";
+  $("winLoot").innerHTML = Object.entries(S.loot).map(([k, v]) =>
+    `<div class="slot" style="background-image:url(${TEX[k]});background-size:cover" title="${NAMES[k]}"><span>${v}</span></div>`).join("");
+  $("nextLvl").style.display = S.i < LEVELS.length - 1 ? "" : "none";
+  setTimeout(() => burst($("winLoot"), PAL[S.lv.ore] || PAL.gold, 40), 200);
+  if (S.i === LEVELS.length - 1) return finalScreen();
+  show("win");
+}
+
+function finalScreen(){
+  const total = Object.values(save.stars).reduce((a, b) => a + b, 0);
+  $("finalStars").innerHTML = "★ " + total + " / 30";
+  $("finalMsg").textContent = "Ты прошла все 10 уровней и добыла всю таблицу умножения. Настоящий мастер кирки!";
+  $("finalLoot").innerHTML = Object.entries(save.inv).map(([k, v]) =>
+    `<div class="slot" style="background-image:url(${TEX[k]});background-size:cover" title="${NAMES[k]}"><span>${v}</span></div>`).join("");
+  show("final");
+  let i = 0;
+  const rain = setInterval(() => { burst($("finalStars"), PAL.diamond, 14); if (++i > 8) clearInterval(rain); }, 260);
+}
+
+function failLevel(){
+  SFX.lose();
+  store();
+  const t = S.lv.tables.length === 1 ? S.lv.tables[0] : null;
+  $("loseCheat").innerHTML = cheatHTML(t);
+  $("loseMsg").textContent = "Ты успела добыть " + S.done + " из " + S.total + " блоков. Повтори табличку и вперёд!";
+  show("lose");
+}
+
+/* ═══════════ 9. КАРТА И ИНВЕНТАРЬ ═══════════ */
+function renderBar(el){
+  const items = Object.entries(save.inv).sort((a, b) => b[1] - a[1]).slice(0, 9);
+  el.innerHTML = Array.from({ length: 9 }, (_, k) => {
+    const it = items[k];
+    return it
+      ? `<div class="slot" style="background-image:url(${TEX[it[0]]});background-size:cover" title="${NAMES[it[0]]}"><span>${it[1]}</span></div>`
+      : `<div class="slot"></div>`;
+  }).join("");
+}
+
+function renderMap(){
+  $("levels").innerHTML = LEVELS.map((lv, i) => {
+    const st = save.stars[i] || 0, lock = !unlocked(i);
+    const stars = [0,1,2].map(k => k < st ? "★" : '<span class="off">★</span>').join("");
+    return `<button class="lvl${lock ? " locked" : ""}" data-i="${i}" ${lock ? "disabled" : ""}>
+      <div class="ico" style="background-image:url(${TEX[lv.tex]});background-size:cover"></div>
+      <div class="meta">
+        <span class="nm">${i + 1}. ${lv.name}</span>
+        <span class="tb">${lv.tables.length === 1 ? "таблица на " + lv.tables[0] : "все таблицы"}</span>
+        <span class="stars">${lock ? "🔒" : stars}</span>
+      </div></button>`;
+  }).join("");
+  const done = Object.keys(save.stars).length;
+  const tot = Object.values(save.stars).reduce((a, b) => a + b, 0);
+  $("mapSub").textContent = done
+    ? `Пройдено уровней: ${done} / 10 · звёзд: ${tot} / 30`
+    : "10 уровней · 3 жизни на уровень";
+  renderBar($("mapBar"));
+  $("toMap").style.display = "none";
+  show("map");
+}
+
+/* ═══════════ 10. СОБЫТИЯ ═══════════ */
+$("levels").addEventListener("click", e => {
+  const b = e.target.closest(".lvl");
+  if (b && !b.classList.contains("locked")) startLevel(+b.dataset.i);
+});
+$("answers").addEventListener("click", e => {
+  const b = e.target.closest(".ans");
+  if (b) answer(b);
+});
+$("startLvl").onclick = () => { show("game"); $("toMap").style.display = ""; nextQuestion(); };
+$("nextLvl").onclick = () => startLevel(Math.min(S.i + 1, LEVELS.length - 1));
+$("retry").onclick = () => startLevel(S.i);
+$("winMap").onclick = $("loseMap").onclick = $("finalMap").onclick = $("toMap").onclick = renderMap;
+$("hint").onclick = () => {
+  if (!S || S.hints === 0 || S.busy) return;
+  S.hints--;
+  const [a, b] = S.queue[0];
+  toast(a + " × " + b + " — это " + a + " раз по " + b + " = " + (a * b));
+  renderHUD();
+};
+$("sound").onclick = () => {
+  save.sound = !save.sound; store();
+  $("sound").textContent = save.sound ? "🔊" : "🔇";
+  if (save.sound) SFX.charge();
+};
+$("reset").onclick = () => {
+  if (confirm("Стереть весь прогресс и начать шахту заново?")){
+    save = { stars:{}, inv:{}, sound: save.sound }; store(); renderMap();
+  }
+};
+addEventListener("keydown", e => {
+  if ($("game").classList.contains("on")){
+    const k = +e.key;
+    if (k >= 1 && k <= 4){ const b = document.querySelectorAll(".ans")[k - 1]; if (b) answer(b); }
+    if (e.key.toLowerCase() === "h" || e.key === "р") $("hint").click();
+  } else if (e.key === "Enter"){
+    const b = document.querySelector(".screen.on .btn.primary");
+    if (b) b.click();
+  }
+});
+
+$("sound").textContent = save.sound ? "🔊" : "🔇";
+renderMap();
+</script>
+</body>
+</html>
